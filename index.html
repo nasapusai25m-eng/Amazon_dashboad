@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amazon Last-Mile Delivery — AI Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #F0F4F8; color: #1a1a2e; }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #1F3864 0%, #2E74B5 100%);
+    color: white; padding: 22px 36px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.25);
+  }
+  .header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+  .header p  { font-size: 12px; opacity: 0.82; margin-top: 4px; }
+  .badge {
+    background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 600;
+  }
+
+  /* ── KPI Bar ── */
+  .kpi-bar {
+    display: flex; gap: 16px; padding: 18px 36px;
+    background: #fff; border-bottom: 1px solid #dde3ed;
+    overflow-x: auto;
+  }
+  .kpi {
+    flex: 1; min-width: 150px; background: #F7FAFF;
+    border: 1px solid #D0DFF5; border-radius: 10px;
+    padding: 14px 18px; text-align: center;
+  }
+  .kpi .label { font-size: 11px; color: #666; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px; }
+  .kpi .value { font-size: 26px; font-weight: 700; color: #1F3864; }
+  .kpi .sub   { font-size: 11px; color: #888; margin-top: 3px; }
+  .kpi.green .value { color: #2e7d32; }
+  .kpi.red   .value { color: #c00000; }
+  .kpi.blue  .value { color: #2E74B5; }
+
+  /* ── Layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 20px; padding: 24px 36px;
+  }
+  .card {
+    background: white; border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    border: 1px solid #e4eaf5;
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card h2 { font-size: 13px; font-weight: 700; color: #1F3864;
+    margin-bottom: 4px; }
+  .card p.sub { font-size: 11px; color: #888; margin-bottom: 16px; }
+  .chart-wrap { position: relative; height: 240px; }
+  .chart-wrap.tall { height: 290px; }
+  .chart-wrap.heatmap { height: 220px; overflow-x: auto; }
+
+  /* ── Heatmap ── */
+  .heatmap-grid {
+    display: grid; gap: 3px;
+    grid-template-columns: 44px repeat(15, 1fr);
+  }
+  .hm-label { font-size: 10px; color: #555; text-align: right;
+    padding-right: 6px; display: flex; align-items: center;
+    justify-content: flex-end; }
+  .hm-cell {
+    height: 26px; border-radius: 3px; cursor: pointer;
+    transition: transform 0.15s; position: relative;
+  }
+  .hm-cell:hover { transform: scale(1.15); z-index: 10; }
+  .hm-cell:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+    background: #1F3864; color: #fff; padding: 4px 8px;
+    border-radius: 5px; font-size: 10px; white-space: nowrap; z-index: 20;
+  }
+  .hm-hour { font-size: 9px; color: #888; text-align: center; padding-top: 4px; }
+  .hm-legend {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px; font-size: 10px; color: #666;
+  }
+  .hm-grad {
+    width: 120px; height: 10px; border-radius: 5px;
+    background: linear-gradient(to right, #4CAF50, #FFEB3B, #FF5722, #C00000);
+  }
+
+  /* ── Risk tier ── */
+  .risk-row { display: flex; gap: 12px; margin-top: 10px; }
+  .tier {
+    flex: 1; border-radius: 8px; padding: 12px;
+    text-align: center; border: 1px solid #ddd;
+  }
+  .tier .t-pct { font-size: 28px; font-weight: 700; }
+  .tier .t-lbl { font-size: 11px; margin-top: 4px; font-weight: 600; }
+  .tier .t-sub { font-size: 10px; color: #666; margin-top: 2px; }
+  .tier.low    { background:#E8F5E9; border-color:#81C784; }
+  .tier.low    .t-pct { color:#2e7d32; }
+  .tier.mid    { background:#FFF8E1; border-color:#FFD54F; }
+  .tier.mid    .t-pct { color:#E65100; }
+  .tier.high   { background:#FFEBEE; border-color:#EF9A9A; }
+  .tier.high   .t-pct { color:#c00000; }
+
+  /* ── Footer ── */
+  footer {
+    background: #1F3864; color: rgba(255,255,255,0.7);
+    text-align: center; padding: 14px; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ════════════════════════════════════════════════════════════ -->
+<div class="header">
+  <div>
+    <h1>🚚 Amazon Last-Mile Delivery — AI Analytics Dashboard</h1>
+    <p>Working with AI Project  |  IIM Ranchi MBA 2025–26  |  Information Systems</p>
+  </div>
+  <span class="badge">Model: Random Forest  |  AUC-ROC: 0.87</span>
+</div>
+
+<!-- ══ KPI BAR ══════════════════════════════════════════════════════════ -->
+<div class="kpi-bar">
+  <div class="kpi red">
+    <div class="label">Overall Delay Rate</div>
+    <div class="value">27.3%</div>
+    <div class="sub">of 44,688 deliveries</div>
+  </div>
+  <div class="kpi blue">
+    <div class="label">Model AUC-ROC</div>
+    <div class="value">0.87</div>
+    <div class="sub">Random Forest (best)</div>
+  </div>
+  <div class="kpi green">
+    <div class="label">On-Time Rate</div>
+    <div class="value">72.7%</div>
+    <div class="sub">baseline (pre-AI)</div>
+  </div>
+  <div class="kpi red">
+    <div class="label">Peak Delay Rate</div>
+    <div class="value">41.2%</div>
+    <div class="sub">Rain / Storm conditions</div>
+  </div>
+  <div class="kpi blue">
+    <div class="label">CV AUC-ROC</div>
+    <div class="value">0.86</div>
+    <div class="sub">5-fold cross-validation</div>
+  </div>
+  <div class="kpi green">
+    <div class="label">Projected Cost Saving</div>
+    <div class="value">~12%</div>
+    <div class="sub">per delivery (Year 2)</div>
+  </div>
+</div>
+
+<!-- ══ CHARTS GRID ════════════════════════════════════════════════════════ -->
+<div class="grid">
+
+  <!-- Figure 1: Model Comparison -->
+  <div class="card">
+    <h2>Figure 1 — Model Performance Comparison</h2>
+    <p class="sub">AUC-ROC and F1-Score across three classifiers. Target AUC = 0.85 (dashed red).</p>
+    <div class="chart-wrap">
+      <canvas id="modelChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Figure 2: Feature Importance -->
+  <div class="card">
+    <h2>Figure 2 — Feature Importance (Random Forest)</h2>
+    <p class="sub">Top 10 predictors of delivery delay ranked by importance score.</p>
+    <div class="chart-wrap tall">
+      <canvas id="featureChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Figure 3: Area + Weather -->
+  <div class="card">
+    <h2>Figure 3a & 3b — Delay Rate by Area Type and Weather</h2>
+    <p class="sub">Semi-urban zones and adverse weather are the highest-risk operational contexts.</p>
+    <div class="chart-wrap">
+      <canvas id="areaWeatherChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Risk Tier Card -->
+  <div class="card">
+    <h2>Shipment Risk Distribution</h2>
+    <p class="sub">Today's queue segmented into Low / Medium / High delay risk tiers by the model.</p>
+    <div class="chart-wrap" style="height:140px">
+      <canvas id="riskChart"></canvas>
+    </div>
+    <div class="risk-row">
+      <div class="tier low">
+        <div class="t-pct">52%</div>
+        <div class="t-lbl">🟢 Low Risk</div>
+        <div class="t-sub">Delay prob &lt; 30%</div>
+      </div>
+      <div class="tier mid">
+        <div class="t-pct">31%</div>
+        <div class="t-lbl">🟡 Medium Risk</div>
+        <div class="t-sub">Delay prob 30–60%</div>
+      </div>
+      <div class="tier high">
+        <div class="t-pct">17%</div>
+        <div class="t-lbl">🔴 High Risk</div>
+        <div class="t-sub">Delay prob &gt; 60%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Figure 4: Heatmap (wide) -->
+  <div class="card wide">
+    <h2>Figure 4 — Delivery Delay Probability Heatmap (Day of Week × Hour of Day)</h2>
+    <p class="sub">Darker red = higher delay risk. Hover over any cell for exact value. Lunch (12–14h) and evening (18–21h) peaks clearly visible.</p>
+    <div class="heatmap-grid" id="heatmapGrid"></div>
+    <div class="hm-legend">
+      <span>Low risk</span>
+      <div class="hm-grad"></div>
+      <span>High risk</span>
+    </div>
+  </div>
+
+  <!-- Figure 5: Monthly Trend (wide) -->
+  <div class="card wide">
+    <h2>Figure 5 — Monthly Delay Trend and 3-Month Forecast</h2>
+    <p class="sub">Historical delay rate over 12 months with AI-generated 3-month forecast and 90% confidence band. Oct–Dec festive season shows sharp spike.</p>
+    <div class="chart-wrap">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  IIM Ranchi · MBA 2025–26 · Working with AI Project · Amazon Last-Mile Delivery Optimization · [Student Name] · Roll: [XXXXXX]
+</footer>
+
+<script>
+// ── Colour palette ────────────────────────────────────────────────────────
+const DARK   = '#1F3864';
+const MID    = '#2E74B5';
+const LIGHT  = '#9DC3E6';
+const RED    = '#C00000';
+const ORANGE = '#E07B39';
+const GREEN  = '#2e7d32';
+
+// ── Figure 1: Model Comparison ────────────────────────────────────────────
+new Chart(document.getElementById('modelChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Logistic Regression\n(Baseline)', 'Gradient Boosting', 'Random Forest\n(Best Model)'],
+    datasets: [
+      { label: 'AUC-ROC',  data: [0.71, 0.83, 0.87], backgroundColor: DARK,  borderRadius: 5 },
+      { label: 'F1-Score', data: [0.64, 0.76, 0.81], backgroundColor: LIGHT, borderRadius: 5 }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { font: { size: 11 } } },
+      annotation: { annotations: {} }
+    },
+    scales: {
+      y: {
+        min: 0.5, max: 1.0,
+        ticks: { font: { size: 10 } },
+        grid: { color: '#eee' }
+      },
+      x: { ticks: { font: { size: 10 } } }
+    }
+  },
+  plugins: [{
+    id: 'targetLine',
+    afterDraw(chart) {
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+      const yPos = y.getPixelForValue(0.85);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = RED; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(left, yPos); ctx.lineTo(right, yPos); ctx.stroke();
+      ctx.fillStyle = RED; ctx.font = '10px Segoe UI';
+      ctx.fillText('Target AUC 0.85', right - 90, yPos - 5);
+      ctx.restore();
+    }
+  }]
+});
+
+// ── Figure 2: Feature Importance ─────────────────────────────────────────
+const features = [
+  'Traffic Density','Distance (km)','Is Peak Hour','Weather Condition',
+  'Area Type','Is Weekend','Order Hour','Vehicle Type','Order Value','Day of Week'
+];
+const importance = [0.218, 0.187, 0.143, 0.112, 0.098, 0.071, 0.063, 0.048, 0.034, 0.026];
+const barColors  = importance.map(v => v > 0.14 ? DARK : v > 0.08 ? MID : LIGHT);
+
+new Chart(document.getElementById('featureChart'), {
+  type: 'bar',
+  data: {
+    labels: [...features].reverse(),
+    datasets: [{ label: 'Importance', data: [...importance].reverse(),
+      backgroundColor: [...barColors].reverse(), borderRadius: 4 }]
+  },
+  options: {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { min: 0, max: 0.27, ticks: { font: { size: 9 } }, grid: { color: '#eee' } },
+      y: { ticks: { font: { size: 10 } } }
+    }
+  }
+});
+
+// ── Figure 3: Area + Weather ──────────────────────────────────────────────
+new Chart(document.getElementById('areaWeatherChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Semi-Urban', 'Urban', 'Rural', '|', 'Rain/Storm', 'Fog', 'Cloudy', 'Sunny'],
+    datasets: [{
+      label: 'Delay Rate (%)',
+      data: [38.4, 25.1, 19.7, null, 41.2, 34.6, 27.3, 18.9],
+      backgroundColor: [RED, ORANGE, '#4472C4', 'transparent',
+                        RED, ORANGE, MID, GREEN],
+      borderRadius: 5
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ctx.raw !== null ? `${ctx.raw}%` : '' } }
+    },
+    scales: {
+      y: { ticks: { callback: v => v + '%', font: { size: 10 } },
+           grid: { color: '#eee' } },
+      x: { ticks: { font: { size: 10 } } }
+    }
+  }
+});
+
+// ── Risk Doughnut ─────────────────────────────────────────────────────────
+new Chart(document.getElementById('riskChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+    datasets: [{ data: [52, 31, 17],
+      backgroundColor: ['#4CAF50', '#FFC107', RED],
+      borderWidth: 2, borderColor: '#fff' }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '62%',
+    plugins: {
+      legend: { position: 'right', labels: { font: { size: 10 }, padding: 10 } },
+      tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw}%` } }
+    }
+  }
+});
+
+// ── Figure 4: Heatmap (rendered as CSS grid) ──────────────────────────────
+const days  = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const hours = Array.from({length:15}, (_,i) => i + 8);
+
+// Simulated delay probability matrix (day x hour)
+const hmData = [
+  [0.12,0.11,0.14,0.18,0.38,0.41,0.35,0.15,0.13,0.42,0.51,0.48,0.22,0.16,0.13],
+  [0.11,0.13,0.16,0.21,0.36,0.39,0.33,0.14,0.11,0.38,0.48,0.44,0.19,0.14,0.12],
+  [0.14,0.12,0.18,0.22,0.41,0.44,0.38,0.16,0.14,0.45,0.55,0.50,0.24,0.18,0.14],
+  [0.13,0.11,0.15,0.19,0.39,0.42,0.36,0.15,0.12,0.43,0.52,0.47,0.21,0.15,0.12],
+  [0.15,0.14,0.17,0.23,0.43,0.46,0.40,0.17,0.15,0.47,0.57,0.52,0.26,0.20,0.15],
+  [0.18,0.17,0.21,0.28,0.32,0.35,0.30,0.22,0.20,0.38,0.46,0.41,0.30,0.25,0.19],
+  [0.16,0.15,0.19,0.25,0.29,0.32,0.27,0.20,0.18,0.35,0.43,0.38,0.27,0.22,0.17],
+];
+
+function delayColor(val) {
+  // Green → Yellow → Orange → Red
+  if (val < 0.15) return `hsl(120,60%,${65 - val*100}%)`;
+  if (val < 0.30) return `hsl(${120 - (val-0.15)*400},70%,55%)`;
+  if (val < 0.45) return `hsl(${60 - (val-0.30)*200},80%,50%)`;
+  return `hsl(${Math.max(0, 20 - (val-0.45)*100)},90%,${Math.max(35, 50 - val*20)}%)`;
+}
+
+const grid = document.getElementById('heatmapGrid');
+
+// Hour labels row
+grid.appendChild(Object.assign(document.createElement('div'), {style:''}));
+hours.forEach(h => {
+  const el = document.createElement('div');
+  el.className = 'hm-hour';
+  el.textContent = `${h}:00`;
+  grid.appendChild(el);
+});
+
+// Data rows
+hmData.forEach((row, di) => {
+  const lbl = document.createElement('div');
+  lbl.className = 'hm-label';
+  lbl.textContent = days[di];
+  grid.appendChild(lbl);
+  row.forEach((val, hi) => {
+    const cell = document.createElement('div');
+    cell.className = 'hm-cell';
+    cell.style.background = delayColor(val);
+    cell.setAttribute('data-tip', `${days[di]} ${hours[hi]}:00 → ${(val*100).toFixed(0)}% delay risk`);
+    grid.appendChild(cell);
+  });
+});
+
+// ── Figure 5: Monthly Trend + Forecast ───────────────────────────────────
+const histLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const histData   = [22.1,21.4,23.0,20.8,21.9,24.3,27.1,26.4,25.9,29.4,38.7,41.2];
+const foreLabels = ['Jan*','Feb*','Mar*'];
+const foreData   = [40.1, 34.2, 28.5];
+const foreUpper  = [44.8, 38.6, 33.1];
+const foreLower  = [35.4, 29.8, 24.0];
+
+const allLabels = [...histLabels, ...foreLabels];
+const histFull  = [...histData, null, null, null];
+const foreFull  = [...Array(12).fill(null), ...foreData];
+const upperFull = [...Array(12).fill(null), ...foreUpper];
+const lowerFull = [...Array(12).fill(null), ...foreLower];
+
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: allLabels,
+    datasets: [
+      {
+        label: 'Historical Delay Rate (%)',
+        data: histFull, borderColor: DARK, backgroundColor: 'rgba(31,56,100,0.08)',
+        tension: 0.35, pointRadius: 4, pointBackgroundColor: DARK,
+        borderWidth: 2.5, fill: true
+      },
+      {
+        label: 'Forecast',
+        data: foreFull, borderColor: RED, borderDash: [7, 4],
+        backgroundColor: 'rgba(192,0,0,0.06)', tension: 0.3,
+        pointRadius: 5, pointBackgroundColor: RED, borderWidth: 2, fill: false
+      },
+      {
+        label: '90% Upper Band', data: upperFull,
+        borderColor: 'rgba(192,0,0,0.0)', backgroundColor: 'rgba(192,0,0,0.10)',
+        pointRadius: 0, fill: '+1', tension: 0.3
+      },
+      {
+        label: '90% Lower Band', data: lowerFull,
+        borderColor: 'rgba(192,0,0,0.0)', backgroundColor: 'rgba(192,0,0,0.0)',
+        pointRadius: 0, fill: false, tension: 0.3
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          filter: item => !item.text.includes('Band'),
+          font: { size: 11 }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.raw !== null ? `${ctx.dataset.label}: ${ctx.raw}%` : ''
+        }
+      }
+    },
+    scales: {
+      y: {
+        min: 10, max: 55,
+        ticks: { callback: v => v + '%', font: { size: 10 } },
+        grid: { color: '#eee' }
+      },
+      x: { ticks: { font: { size: 10 } } }
+    }
+  },
+  plugins: [{
+    id: 'peakZone',
+    beforeDraw(chart) {
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+      const x1 = x.getPixelForValue(9);  // Oct index
+      const x2 = x.getPixelForValue(11); // Dec index
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,160,0,0.10)';
+      ctx.fillRect(x1, top, x2 - x1, bottom - top);
+      ctx.fillStyle = 'rgba(200,100,0,0.6)';
+      ctx.font = '10px Segoe UI';
+      ctx.fillText('Peak Season', x1 + 4, top + 14);
+      ctx.restore();
+    }
+  }]
+});
+</script>
+</body>
+</html>
